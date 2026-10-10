@@ -16,6 +16,16 @@ METUCHEN = "METUCHEN"
 PENN = "NEW YORK PENN STATION"
 
 
+def station(name):
+    # NJ Transit's stop names vary ("NEW YORK PENN STATION", "NY PENN STA", ...).
+    name = name.strip().upper()
+    if name == METUCHEN:
+        return METUCHEN
+    if "PENN" in name and ("NEW YORK" in name or name.startswith(("NY", "N.Y"))):
+        return PENN
+    return None
+
+
 def rows(zf, name):
     if name not in zf.namelist():
         return []
@@ -50,12 +60,13 @@ def fmt(gtfs_time):
 def build(gtfs_path, now):
     with zipfile.ZipFile(gtfs_path) as zf:
         stop_ids = {}
-        for r in rows(zf, "stops.txt"):
-            name = r["stop_name"].strip().upper()
-            if name in (METUCHEN, PENN):
+        stops = rows(zf, "stops.txt")
+        for r in stops:
+            if name := station(r["stop_name"]):
                 stop_ids[r["stop_id"]] = name
         if set(stop_ids.values()) != {METUCHEN, PENN}:
-            sys.exit(f"Could not find both stations in stops.txt: {stop_ids}")
+            penn_like = [r["stop_name"] for r in stops if "PENN" in r["stop_name"].upper()]
+            sys.exit(f"Could not find both stations in stops.txt: {stop_ids}; names with PENN: {penn_like}")
 
         services = active_services(zf, now.date())
         trips = {r["trip_id"]: r for r in rows(zf, "trips.txt") if r["service_id"] in services}
