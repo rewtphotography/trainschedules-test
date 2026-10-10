@@ -7,8 +7,8 @@
 <meta name="apple-mobile-web-app-title" content="Trains">
 <title>Metuchen Trains</title>
 <style>
-  :root { --bg: #fff; --fg: #111; --muted: #777; --line: #e5e5e5; --accent: #0057a8; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #000; --fg: #eee; --muted: #888; --line: #222; --accent: #4da3ff; } }
+  :root { --bg: #fff; --fg: #111; --muted: #777; --line: #e5e5e5; --accent: #0057a8; --fast: #1a7f37; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #000; --fg: #eee; --muted: #888; --line: #222; --accent: #4da3ff; --fast: #3fb950; } }
   body { margin: 0; padding: 16px; padding-top: max(16px, env(safe-area-inset-top));
          font: 18px -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--fg); }
   button { width: 100%; padding: 14px; font: inherit; font-weight: 600; border: 0; border-radius: 12px;
@@ -18,13 +18,14 @@
   th { text-align: left; font-size: 13px; color: var(--muted); font-weight: 500; padding: 8px 0; }
   td { padding: 10px 0; border-top: 1px solid var(--line); }
   tr.past td { color: var(--muted); }
+  td.fast { color: var(--fast); font-weight: 700; }
 </style>
 </head>
 <body>
 <button id="toggle"></button>
 <div id="date"></div>
 <table>
-  <thead><tr><th>Departs</th><th>Arrives</th></tr></thead>
+  <thead><tr><th>Departs</th><th>Arrives</th><th>Duration</th></tr></thead>
   <tbody id="rows"></tbody>
 </table>
 <script>
@@ -43,8 +44,8 @@ function render() {
   document.getElementById("date").textContent = data.date;
   const now = new Date(), nowMin = now.getHours() * 60 + now.getMinutes();
   document.getElementById("rows").innerHTML = data[dir].map(t =>
-    `<tr class="${minutes(t.depart) < nowMin ? "past" : ""}"><td>${t.depart}</td><td>${t.arrive}</td></tr>`
-  ).join("") || "<tr><td colspan=2>No trains found.</td></tr>";
+    `<tr class="${minutes(t.depart) < nowMin ? "past" : ""}"><td>${t.depart}</td><td>${t.arrive}</td><td class="${t.fast ? "fast" : ""}">${t.minutes} min${t.fast ? " ⚡" : ""}</td></tr>`
+  ).join("") || "<tr><td colspan=3>No trains found.</td></tr>";
 }
 
 document.getElementById("toggle").onclick = () => {

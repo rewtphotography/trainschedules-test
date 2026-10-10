@@ -57,6 +57,11 @@ def fmt(gtfs_time):
     return f"{(h % 12) or 12}:{m:02d} {'AM' if h < 12 else 'PM'}"
 
 
+def secs(gtfs_time):
+    h, m, sec = (int(x) for x in gtfs_time.split(":"))
+    return h * 3600 + m * 60 + sec
+
+
 def build(gtfs_path, now):
     with zipfile.ZipFile(gtfs_path) as zf:
         stop_ids = {}
@@ -89,13 +94,17 @@ def build(gtfs_path, now):
             "sort": dep["departure_time"].zfill(8),
             "depart": fmt(dep["departure_time"]),
             "arrive": fmt(arr["arrival_time"]),
+            "minutes": (secs(arr["arrival_time"]) - secs(dep["departure_time"])) // 60,
             "train": trips[trip_id].get("trip_short_name", ""),
         })
 
     for trains in directions.values():
         trains.sort(key=lambda t: t["sort"])
+        # Flag trains noticeably quicker than the typical one (e.g. express runs).
+        typical = sorted(t["minutes"] for t in trains)[len(trains) // 2] if trains else 0
         for t in trains:
             del t["sort"]
+            t["fast"] = t["minutes"] <= typical - 5
     return {"date": now.strftime("%A, %B %-d, %Y"), "generated": now.isoformat(), **directions}
 
 
