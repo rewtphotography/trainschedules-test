@@ -7,12 +7,15 @@
 <meta name="apple-mobile-web-app-title" content="Trains">
 <title>Metuchen Trains</title>
 <style>
-  :root { --bg: #fff; --fg: #111; --muted: #777; --line: #e5e5e5; --accent: #0057a8; --fast: #1a7f37; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #000; --fg: #eee; --muted: #888; --line: #222; --accent: #4da3ff; --fast: #3fb950; } }
+  :root { --bg: #fff; --fg: #111; --muted: #777; --line: #e5e5e5; --accent: #0057a8; --fast: #1a7f37; --card: #f0f0f3; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #000; --fg: #eee; --muted: #888; --line: #222; --accent: #4da3ff; --fast: #3fb950; --card: #1c1c1e; } }
   body { margin: 0; padding: 16px; padding-top: max(16px, env(safe-area-inset-top));
          font: 18px -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--fg); }
   button { width: 100%; padding: 14px; font: inherit; font-weight: 600; border: 0; border-radius: 12px;
            background: var(--accent); color: #fff; }
+  header { display: flex; gap: 10px; }
+  header #toggle { flex: 1; }
+  #cog { width: 52px; flex: none; padding: 0; font-size: 24px; background: var(--card); color: var(--fg); }
   #date { color: var(--muted); font-size: 14px; margin: 12px 0 4px; }
   table { width: 100%; border-collapse: collapse; table-layout: fixed; font-variant-numeric: tabular-nums; }
   th, td { width: 33.3%; text-align: left; }
@@ -24,55 +27,155 @@
   #more { display: block; margin: 16px auto; background: none; color: var(--accent); font-weight: 500; }
   #more[hidden] { display: none; }
   td.fast { color: var(--fast); font-weight: 700; }
+  #settings { position: fixed; inset: 0; overflow-y: auto; background: var(--bg); padding: 16px;
+              padding-top: max(16px, env(safe-area-inset-top)); }
+  #settings[hidden] { display: none; }
+  .bar { display: flex; justify-content: space-between; align-items: center; }
+  .bar h2 { margin: 0; font-size: 22px; }
+  #done { width: auto; padding: 8px 16px; }
+  .field { margin-top: 24px; }
+  .label { font-size: 13px; color: var(--muted); }
+  .current { font-size: 20px; font-weight: 600; margin: 4px 0 10px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+  .chip { width: auto; padding: 8px 12px; font-size: 15px; font-weight: 500; background: var(--card); color: var(--fg); }
+  .chip.on { background: var(--accent); color: #fff; }
+  input[type=search] { width: 100%; box-sizing: border-box; padding: 12px; font: inherit; border-radius: 12px;
+                       border: 1px solid var(--line); background: var(--card); color: var(--fg); }
+  .results { list-style: none; margin: 0; padding: 0; }
+  .results li { display: flex; align-items: center; border-bottom: 1px solid var(--line); }
+  .results .pick { flex: 1; text-align: left; background: none; color: var(--fg); font-weight: 400; padding: 12px 0; }
+  .results .star { width: 48px; background: none; color: var(--muted); font-size: 22px; padding: 8px 0; }
+  .results .star.on { color: #f5b301; }
 </style>
 </head>
 <body>
-<button id="toggle"></button>
+<header><button id="toggle"></button><button id="cog" aria-label="Settings">⚙︎</button></header>
 <div id="date"></div>
 <table>
   <thead><tr><th>Departs</th><th>Arrives</th><th>Duration</th></tr></thead>
   <tbody id="rows"></tbody>
 </table>
 <button id="more" hidden></button>
+<div id="settings" hidden>
+  <div class="bar"><h2>Settings</h2><button id="done">Done</button></div>
+  <div class="field" data-key="from"><div class="label">Departure</div></div>
+  <div class="field" data-key="to"><div class="label">Destination</div></div>
+</div>
 <script>
-const LABELS = { to_penn: "Metuchen → NY Penn", to_metuchen: "NY Penn → Metuchen" };
-let dir = "to_penn";
-try { dir = localStorage.getItem("dir") || dir; } catch {}
+const PENN = "New York Penn Station";
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+const KEEP_DEPARTED = 3;
+let route = store.get("route", { from: "Metuchen", to: PENN });
+let favorites = store.get("favorites", ["Metuchen", PENN]);
+let showAll = false;
 let data;
 
-const KEEP_DEPARTED = 3;
-let showAll = false;
+// Carry over the direction saved by the earlier two-station version.
+try {
+  if (localStorage.getItem("dir") === "to_metuchen" && !localStorage.getItem("route")) route = { from: PENN, to: "Metuchen" };
+  localStorage.removeItem("dir");
+} catch {}
 
-function render() {
-  document.getElementById("toggle").textContent = LABELS[dir] + "  ⇄";
-  document.getElementById("date").textContent = data.date;
-  const now = new Date(), nowMin = now.getHours() * 60 + now.getMinutes();
-  const trains = data[dir].map(t => ({ ...t, past: t.dep_min < nowMin }));
-  const departed = trains.filter(t => t.past).length;
-  const hidden = showAll ? 0 : Math.max(0, departed - KEEP_DEPARTED);
-  document.getElementById("rows").innerHTML = trains.slice(hidden).map(t =>
-    `<tr class="${t.past ? "past" : ""}"><td>${t.depart}</td><td>${t.arrive}</td><td class="${t.fast ? "fast" : ""}">${t.minutes} min${t.fast ? " ⚡" : ""}</td></tr>`
-  ).join("") || "<tr><td colspan=3>No trains found.</td></tr>";
-  const more = document.getElementById("more");
-  more.hidden = departed <= KEEP_DEPARTED;
-  more.textContent = showAll ? "Hide earlier trains" : `Show ${hidden} earlier train${hidden === 1 ? "" : "s"}`;
+const short = name => name === PENN ? "NY Penn" : name;
+
+function clock(min) {
+  const h = Math.floor(min / 60) % 24, m = min % 60;
+  return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
 }
 
-document.getElementById("more").onclick = () => {
+function trainsFor(from, to) {
+  const f = data.stations.indexOf(from), t = data.stations.indexOf(to);
+  const out = [];
+  for (const [, stops] of data.trips) {
+    const i = stops.findIndex(s => s[0] === f);
+    const j = stops.findIndex((s, k) => k > i && s[0] === t);
+    if (i < 0 || j < 0) continue;
+    out.push({ dep: stops[i][2], arr: stops[j][1] });
+  }
+  out.sort((a, b) => a.dep - b.dep);
+  // Flag trains noticeably quicker than the typical one (e.g. express runs).
+  const typical = out.map(t => t.arr - t.dep).sort((a, b) => a - b)[out.length >> 1];
+  for (const t of out) t.fast = t.arr - t.dep <= typical - 5;
+  return out;
+}
+
+function render() {
+  $("toggle").textContent = `${short(route.from)} → ${short(route.to)}  ⇄`;
+  $("date").textContent = data.date;
+  const now = new Date(), nowMin = now.getHours() * 60 + now.getMinutes();
+  const trains = trainsFor(route.from, route.to).map(t => ({ ...t, past: t.dep < nowMin }));
+  const departed = trains.filter(t => t.past).length;
+  const hidden = showAll ? 0 : Math.max(0, departed - KEEP_DEPARTED);
+  $("rows").innerHTML = trains.slice(hidden).map(t =>
+    `<tr class="${t.past ? "past" : ""}"><td>${clock(t.dep)}</td><td>${clock(t.arr)}</td><td class="${t.fast ? "fast" : ""}">${t.arr - t.dep} min${t.fast ? " ⚡" : ""}</td></tr>`
+  ).join("") || "<tr><td colspan=3>No direct trains today.</td></tr>";
+  $("more").hidden = departed <= KEEP_DEPARTED;
+  $("more").textContent = showAll ? "Hide earlier trains" : `Show ${hidden} earlier train${hidden === 1 ? "" : "s"}`;
+}
+
+function esc(s) { return s.replace(/[&<>"]/g, c => `&#${c.charCodeAt(0)};`); }
+
+function renderField(field) {
+  const key = field.dataset.key;
+  let box = field.querySelector(".body");
+  if (!box) {
+    box = document.createElement("div");
+    box.className = "body";
+    box.innerHTML = `<div class="current"></div><div class="chips"></div>
+      <input type="search" placeholder="Search stations" autocomplete="off"><ul class="results"></ul>`;
+    field.append(box);
+    box.querySelector("input").oninput = () => renderField(field);
+    box.onclick = e => {
+      const b = e.target.closest("button[data-name]");
+      if (!b) return;
+      const name = b.dataset.name;
+      if (b.classList.contains("star")) {
+        favorites = favorites.includes(name) ? favorites.filter(n => n !== name) : [...favorites, name];
+        store.set("favorites", favorites);
+      } else {
+        route = { ...route, [key]: name };
+        store.set("route", route);
+        box.querySelector("input").value = "";
+        showAll = false;
+      }
+      renderSettings();
+    };
+  }
+  box.querySelector(".current").textContent = route[key];
+  box.querySelector(".chips").innerHTML = favorites.map(n =>
+    `<button class="chip ${n === route[key] ? "on" : ""}" data-name="${esc(n)}">${esc(short(n))}</button>`).join("");
+  const q = box.querySelector("input").value.trim().toLowerCase();
+  const matches = q ? data.stations.filter(n => n.toLowerCase().includes(q)).slice(0, 30) : [];
+  box.querySelector(".results").innerHTML = matches.map(n =>
+    `<li><button class="pick" data-name="${esc(n)}">${esc(n)}</button>` +
+    `<button class="star ${favorites.includes(n) ? "on" : ""}" data-name="${esc(n)}" aria-label="Favorite">${favorites.includes(n) ? "★" : "☆"}</button></li>`
+  ).join("");
+}
+
+function renderSettings() { document.querySelectorAll("#settings .field").forEach(renderField); }
+
+$("cog").onclick = () => { renderSettings(); $("settings").hidden = false; };
+$("done").onclick = () => { $("settings").hidden = true; render(); };
+
+$("more").onclick = () => {
   showAll = !showAll;
   render();
   if (showAll) window.scrollTo({ top: 0, behavior: "smooth" });
 };
 
-document.getElementById("toggle").onclick = () => {
-  dir = dir === "to_penn" ? "to_metuchen" : "to_penn";
+$("toggle").onclick = () => {
+  route = { from: route.to, to: route.from };
+  store.set("route", route);
   showAll = false;
-  try { localStorage.setItem("dir", dir); } catch {}
   render();
 };
 
 fetch("schedule.json", { cache: "no-store" }).then(r => r.json()).then(d => { data = d; render(); setInterval(render, 60000); })
-  .catch(() => { document.getElementById("date").textContent = "Couldn't load today's schedule."; });
+  .catch(() => { $("date").textContent = "Couldn't load today's schedule."; });
 </script>
 </body>
 </html>
