@@ -14,7 +14,7 @@
   button { width: 100%; padding: 14px; font: inherit; font-weight: 600; border: 0; border-radius: 12px;
            background: var(--accent); color: #fff; }
   header { display: flex; gap: 10px; }
-  header #toggle { flex: 1; }
+  header #toggle { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 14px 10px; }
   #cog { width: 52px; flex: none; padding: 0; font-size: 24px; background: var(--card); color: var(--fg); }
   #date { color: var(--muted); font-size: 14px; margin: 12px 0 4px; }
   table { width: 100%; border-collapse: collapse; table-layout: fixed; font-variant-numeric: tabular-nums; }
@@ -80,7 +80,16 @@ try {
   localStorage.removeItem("dir");
 } catch {}
 
-const short = name => name === PENN ? "NY Penn" : name;
+const short = name => name === PENN ? "NY Penn" : name.replace(/ (Station|Sta\.?)$/i, "");
+
+// Keep the route button on one line: shrink the text a little, then truncate.
+function fitToggle() {
+  const b = $("toggle");
+  for (let size = 18; size >= 13; size--) {
+    b.style.fontSize = size + "px";
+    if (b.scrollWidth <= b.clientWidth) break;
+  }
+}
 
 function clock(min) {
   const h = Math.floor(min / 60) % 24, m = min % 60;
@@ -105,6 +114,7 @@ function trainsFor(from, to) {
 
 function render() {
   $("toggle").textContent = `${short(route.from)} → ${short(route.to)}  ⇄`;
+  fitToggle();
   $("date").textContent = data.date;
   const now = new Date(), nowMin = now.getHours() * 60 + now.getMinutes();
   const trains = trainsFor(route.from, route.to).map(t => ({ ...t, past: t.dep < nowMin }));
@@ -173,6 +183,8 @@ $("toggle").onclick = () => {
   showAll = false;
   render();
 };
+
+addEventListener("resize", () => data && fitToggle());
 
 fetch("schedule.json", { cache: "no-store" }).then(r => r.json()).then(d => { data = d; render(); setInterval(render, 60000); })
   .catch(() => { $("date").textContent = "Couldn't load today's schedule."; });
