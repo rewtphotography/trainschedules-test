@@ -14,10 +14,15 @@
   button { width: 100%; padding: 14px; font: inherit; font-weight: 600; border: 0; border-radius: 12px;
            background: var(--accent); color: #fff; }
   #date { color: var(--muted); font-size: 14px; margin: 12px 0 4px; }
-  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-  th { text-align: left; font-size: 13px; color: var(--muted); font-weight: 500; padding: 8px 0; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; font-variant-numeric: tabular-nums; }
+  th, td { width: 33.3%; text-align: left; }
+  th:nth-child(2), td:nth-child(2) { text-align: center; }
+  th:nth-child(3), td:nth-child(3) { text-align: right; }
+  th { font-size: 13px; color: var(--muted); font-weight: 500; padding: 8px 0; }
   td { padding: 10px 0; border-top: 1px solid var(--line); }
   tr.past td { color: var(--muted); }
+  #more { display: block; margin: 16px auto; background: none; color: var(--accent); font-weight: 500; }
+  #more[hidden] { display: none; }
   td.fast { color: var(--fast); font-weight: 700; }
 </style>
 </head>
@@ -28,33 +33,45 @@
   <thead><tr><th>Departs</th><th>Arrives</th><th>Duration</th></tr></thead>
   <tbody id="rows"></tbody>
 </table>
+<button id="more" hidden></button>
 <script>
 const LABELS = { to_penn: "Metuchen → NY Penn", to_metuchen: "NY Penn → Metuchen" };
 let dir = "to_penn";
 try { dir = localStorage.getItem("dir") || dir; } catch {}
 let data;
 
-function minutes(t) {
-  const [, h, m, ap] = t.match(/(\d+):(\d+) (AM|PM)/);
-  return (h % 12 + (ap === "PM" ? 12 : 0)) * 60 + +m;
-}
+const KEEP_DEPARTED = 3;
+let showAll = false;
 
 function render() {
   document.getElementById("toggle").textContent = LABELS[dir] + "  ⇄";
   document.getElementById("date").textContent = data.date;
   const now = new Date(), nowMin = now.getHours() * 60 + now.getMinutes();
-  document.getElementById("rows").innerHTML = data[dir].map(t =>
-    `<tr class="${minutes(t.depart) < nowMin ? "past" : ""}"><td>${t.depart}</td><td>${t.arrive}</td><td class="${t.fast ? "fast" : ""}">${t.minutes} min${t.fast ? " ⚡" : ""}</td></tr>`
+  const trains = data[dir].map(t => ({ ...t, past: t.dep_min < nowMin }));
+  const departed = trains.filter(t => t.past).length;
+  const hidden = showAll ? 0 : Math.max(0, departed - KEEP_DEPARTED);
+  document.getElementById("rows").innerHTML = trains.slice(hidden).map(t =>
+    `<tr class="${t.past ? "past" : ""}"><td>${t.depart}</td><td>${t.arrive}</td><td class="${t.fast ? "fast" : ""}">${t.minutes} min${t.fast ? " ⚡" : ""}</td></tr>`
   ).join("") || "<tr><td colspan=3>No trains found.</td></tr>";
+  const more = document.getElementById("more");
+  more.hidden = departed <= KEEP_DEPARTED;
+  more.textContent = showAll ? "Hide earlier trains" : `Show ${hidden} earlier train${hidden === 1 ? "" : "s"}`;
 }
+
+document.getElementById("more").onclick = () => {
+  showAll = !showAll;
+  render();
+  if (showAll) window.scrollTo({ top: 0, behavior: "smooth" });
+};
 
 document.getElementById("toggle").onclick = () => {
   dir = dir === "to_penn" ? "to_metuchen" : "to_penn";
+  showAll = false;
   try { localStorage.setItem("dir", dir); } catch {}
   render();
 };
 
-fetch("schedule.json", { cache: "no-store" }).then(r => r.json()).then(d => { data = d; render(); })
+fetch("schedule.json", { cache: "no-store" }).then(r => r.json()).then(d => { data = d; render(); setInterval(render, 60000); })
   .catch(() => { document.getElementById("date").textContent = "Couldn't load today's schedule."; });
 </script>
 </body>

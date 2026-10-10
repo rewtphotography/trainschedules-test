@@ -94,6 +94,7 @@ def build(gtfs_path, now):
             "sort": dep["departure_time"].zfill(8),
             "depart": fmt(dep["departure_time"]),
             "arrive": fmt(arr["arrival_time"]),
+            "dep_min": secs(dep["departure_time"]) // 60,
             "minutes": (secs(arr["arrival_time"]) - secs(dep["departure_time"])) // 60,
             "train": trips[trip_id].get("trip_short_name", ""),
         })
