@@ -1,0 +1,46 @@
+name: Update schedule
+
+on:
+  schedule:
+    - cron: "17 8 * * *"   # ~3-4 AM in New York, every day
+  workflow_dispatch:
+  push:
+    branches: [master, main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download NJ Transit rail GTFS
+        env:
+          NJT_USERNAME: ${{ secrets.NJT_USERNAME }}
+          NJT_PASSWORD: ${{ secrets.NJT_PASSWORD }}
+          API: https://raildata.njtransit.com/api/GTFSRT
+        run: |
+          token=$(curl -sSf -F "username=$NJT_USERNAME" -F "password=$NJT_PASSWORD" "$API/getToken" \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["UserToken"])')
+          curl -sSf -F "token=$token" -o rail_gtfs.zip "$API/getGTFS"
+
+      - name: Build schedule.json
+        run: python3 scripts/build_schedule.py rail_gtfs.zip site/schedule.json
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4

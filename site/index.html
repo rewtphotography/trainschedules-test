@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Trains">
+<title>Metuchen Trains</title>
+<style>
+  :root { --bg: #fff; --fg: #111; --muted: #777; --line: #e5e5e5; --accent: #0057a8; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #000; --fg: #eee; --muted: #888; --line: #222; --accent: #4da3ff; } }
+  body { margin: 0; padding: 16px; padding-top: max(16px, env(safe-area-inset-top));
+         font: 18px -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+  button { width: 100%; padding: 14px; font: inherit; font-weight: 600; border: 0; border-radius: 12px;
+           background: var(--accent); color: #fff; }
+  #date { color: var(--muted); font-size: 14px; margin: 12px 0 4px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th { text-align: left; font-size: 13px; color: var(--muted); font-weight: 500; padding: 8px 0; }
+  td { padding: 10px 0; border-top: 1px solid var(--line); }
+  tr.past td { color: var(--muted); }
+</style>
+</head>
+<body>
+<button id="toggle"></button>
+<div id="date"></div>
+<table>
+  <thead><tr><th>Departs</th><th>Arrives</th></tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+<script>
+const LABELS = { to_penn: "Metuchen → NY Penn", to_metuchen: "NY Penn → Metuchen" };
+let dir = "to_penn";
+try { dir = localStorage.getItem("dir") || dir; } catch {}
+let data;
+
+function minutes(t) {
+  const [, h, m, ap] = t.match(/(\d+):(\d+) (AM|PM)/);
+  return (h % 12 + (ap === "PM" ? 12 : 0)) * 60 + +m;
+}
+
+function render() {
+  document.getElementById("toggle").textContent = LABELS[dir] + "  ⇄";
+  document.getElementById("date").textContent = data.date;
+  const now = new Date(), nowMin = now.getHours() * 60 + now.getMinutes();
+  document.getElementById("rows").innerHTML = data[dir].map(t =>
+    `<tr class="${minutes(t.depart) < nowMin ? "past" : ""}"><td>${t.depart}</td><td>${t.arrive}</td></tr>`
+  ).join("") || "<tr><td colspan=2>No trains found.</td></tr>";
+}
+
+document.getElementById("toggle").onclick = () => {
+  dir = dir === "to_penn" ? "to_metuchen" : "to_penn";
+  try { localStorage.setItem("dir", dir); } catch {}
+  render();
+};
+
+fetch("schedule.json", { cache: "no-store" }).then(r => r.json()).then(d => { data = d; render(); })
+  .catch(() => { document.getElementById("date").textContent = "Couldn't load today's schedule."; });
+</script>
+</body>
+</html>
